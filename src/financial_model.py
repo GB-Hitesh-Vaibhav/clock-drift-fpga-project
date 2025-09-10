@@ -1,29 +1,35 @@
-import os
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+import os
 
-# 📁 Ensure folders exist
+# 🔍 Set working directory to project root if not already
+project_root = "D:/clock-drift-fpga-project"
+if os.getcwd() != project_root:
+    os.chdir(project_root)
+
 os.makedirs("output", exist_ok=True)
 os.makedirs("output/plots", exist_ok=True)
 
-# 📥 Load order data
+# Load order data
 normal_df = pd.read_csv("data/normal_orders.csv")
 drifted_df = pd.read_csv("data/drifted_orders.csv")
 
-# ⚙️ Simulate market prices (e.g., random walk)
+# Simulate a price timeline (random walk)
 np.random.seed(42)
-price_changes = np.random.normal(loc=0, scale=0.1, size=len(normal_df))
-prices = 100 + np.cumsum(price_changes)
+price_changes = np.random.normal(loc=0, scale=0.1, size=len(normal_df) + 100)
+prices_over_time = 100 + np.cumsum(price_changes)
 
-normal_df["executed_price"] = prices
-drifted_df["executed_price"] = prices  # same price timeline for fair comparison
+# 🧠 Price based on timestamps
+normal_df["executed_price"] = np.interp(normal_df["fpga_1_ts"], np.linspace(0, 1, len(prices_over_time)), prices_over_time)
+drifted_df["executed_price"] = np.interp(drifted_df["fpga_2_ts"], np.linspace(0, 1, len(prices_over_time)), prices_over_time)
 
-# 🧮 Calculate theoretical vs drifted trade values
+# Calculate values
 normal_df["value"] = normal_df["executed_price"]
 drifted_df["value"] = drifted_df["executed_price"]
 
-# Align by order_id for comparison
+# Compare by order_id
 merged = pd.merge(
     normal_df[["order_id", "value"]],
     drifted_df[["order_id", "value"]],
@@ -31,14 +37,13 @@ merged = pd.merge(
     suffixes=("_normal", "_drifted")
 )
 
-# 📊 Calculate profit/loss due to misordering
+# Loss = drifted - normal
 merged["loss_per_order"] = merged["value_drifted"] - merged["value_normal"]
 
-# 📤 Save report
+# Save and plot
 merged.to_csv("output/loss_report.csv", index=False)
 print("Loss report saved to: output/loss_report.csv")
 
-# 📈 Plotting
 plt.figure(figsize=(10, 5))
 plt.plot(merged["order_id"], merged["loss_per_order"], label="Loss per Order", color='orange')
 plt.axhline(0, color='black', linestyle='--')
